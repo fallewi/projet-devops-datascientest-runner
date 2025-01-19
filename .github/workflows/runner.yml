@@ -1,0 +1,168 @@
+name: Terraform CI/CD avec Checkov et rapport
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+ # workflow_dispatch:  # Permet de déclencher manuellement ce workflow
+
+env:
+  gitlab_runner_registration_token: secrets.GITLAB_TOKEN
+
+jobs:
+
+  checkov-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v1
+
+    - name: Configurer les identifiants AWS
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}  # Si vous utilisez un token de session AWS
+        aws-region: eu-west-3  # Spécifiez votre région
+
+    - name: Installer Checkov
+      run: |
+        python3 -m pip install --upgrade pip
+        pip install checkov
+
+    - name: Exécuter Checkov et générer un rapport JSON
+      run: |
+        checkov -d . --output json > checkov_report.json
+      continue-on-error: true  # Cette ligne permet d'ignorer les échecs de Checkov et de continuer
+
+    - name: Télécharger le rapport Checkov comme artefact
+      uses: actions/upload-artifact@v4
+      with:
+        name: checkov-report
+        path: checkov_report.json
+
+
+
+  terraform-plan:
+    runs-on: ubuntu-latest
+    needs: checkov-scan
+    steps:
+      # Vérifiez votre code
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Configurer les identifiants AWS
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}  # Si vous utilisez un token de session AWS
+          aws-region: eu-west-1  # Spécifiez votre région      
+
+      # Configurez Terraform
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0  # Spécifiez la version de Terraform que vous utilisez
+
+      # Installez les dépendances de Terraform (si nécessaire)
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate 
+
+      # Exécutez Terraform Plan et sauvegardez le plan dans un fichier
+      - name: Terraform Plan
+        run: terraform plan  -var "gitlab_runner_registration_token=${{ secrets.GITLAB_TOKEN }}" -out=tfplan
+
+      # Téléchargez le plan comme artefact
+      - name: Upload Terraform Plan as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: tfplan
+
+  terraform-apply:
+    runs-on: ubuntu-latest
+    needs: terraform-plan  # Cela dépend de l'étape "terraform-plan" ci-dessus
+
+    steps:
+      # Vérifiez votre code
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # Configurez Terraform
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0  # Spécifiez la version de Terraform que vous utilisez
+
+      # Installez les dépendances de Terraform (si nécessaire)
+      - name: Terraform init
+        run: terraform init
+      - name: Configurer les identifiants AWS
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}  # Si vous utilisez un token de session AWS
+          aws-region: eu-west-1  # Spécifiez votre région      
+
+      # Récupérez l'artefact contenant le plan
+      - name: Download Terraform Plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+          path: .
+
+      # Appliquez le plan sauvegardé
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/master' || 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          export TF_VAR_gitlab_runner_registration_token="${{ secrets.GITLAB_TOKEN }}"
+          terraform apply -auto-approve -var "gitlab_runner_registration_token=${{ secrets.GITLAB_TOKEN }}"
+
+
+  # Job de suppression manuelle
+  terraform-destroy:
+    runs-on: ubuntu-latest
+    needs:  terraform-apply  # Ce job dépend du job terraform
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    # Ce job ne s'exécute que manuellement
+#    if: ${{ github.event_name == 'workflow_dispatch' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v1
+
+      # Récupérez l'artefact contenant le plan
+    - name: Download Terraform Plan artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: terraform-plan
+        path: .
+
+    - name: Configurer les identifiants AWS
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}  # Si vous utilisez un token de session AWS
+        aws-region: us-east-1  # Spécifiez votre région
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Destroy
+      run: terraform destroy -auto-approve tfplan
