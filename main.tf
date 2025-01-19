@@ -7,11 +7,6 @@ terraform {
     bucket = "datascientest-project-runner-state"  # Remplacez par un nom unique pour le bucket
     key    = "runner.tfstate"
     region = "eu-west-3"
-    acl    = "private"
-
-  versioning {
-    enabled = true  # Active la versioning des objets dans le bucket
-  }
   }
 }
 
