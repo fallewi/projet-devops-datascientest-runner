@@ -106,8 +106,12 @@ jobs:
           terraform_version: 1.5.0  # Spécifiez la version de Terraform que vous utilisez
 
       # Installez les dépendances de Terraform (si nécessaire)
-      - name: Terraform init
+      - name: Initialize Terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}      # Passer la clé d'accès AWS
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}  # Passer la clé secrète AWS
         run: terraform init
+        
       - name: Configurer les identifiants AWS
         uses: aws-actions/configure-aws-credentials@v1
         with:
