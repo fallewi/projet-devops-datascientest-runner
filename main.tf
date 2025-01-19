@@ -2,15 +2,16 @@ provider "aws" {
   region = "eu-west-3"
 }
 
-resource "aws_s3_bucket" "state_bucket" {
-  bucket = "datascientest-project-runner-state"  # Remplacez par un nom unique pour le bucket
+terraform {
+  backend "s3" {
+    bucket = "datascientest-project-runner-state"  # Remplacez par un nom unique pour le bucket
     key    = "runner.tfstate"
     region = "eu-west-3"
-
-  acl    = "private"
+    acl    = "private"
 
   versioning {
     enabled = true  # Active la versioning des objets dans le bucket
+  }
   }
 }
 
