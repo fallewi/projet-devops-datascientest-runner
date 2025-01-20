@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Maintainer: Fall Lewis YOMBA 
+# Email: Fall-lewis.y@datascientest.com
+
 # Install necessary dependencies
 # set -x enables a mode of the shell where all executed commands are printed to the terminal
 set -x
@@ -32,3 +36,22 @@ sudo usermod -aG docker  gitlab-runner
   --locked="false"
 
 systemctl status -l gitlab-runner.service
+
+# Install Helm
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+sudo chmod 700 get_helm.sh
+./get_helm.sh
+
+# Install terraform
+sudo yum install -y yum-utils shadow-utils
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
+sudo yum -y install terraform
+
+# Install Kubectl
+curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.31.3/2024-12-12/bin/linux/amd64/kubectl
+curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.31.3/2024-12-12/bin/linux/amd64/kubectl.sha256
+sha256sum -c kubectl.sha256
+chmod +x ./kubectl
+mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$HOME/bin:$PATH
+echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc
+
